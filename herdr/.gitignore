@@ -1,0 +1,6 @@
+# Track the profile, preferences, and documentation, not runtime files.
+*
+!.gitignore
+!README.md
+!config.toml
+!AGENTS.md
