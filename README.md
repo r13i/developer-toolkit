@@ -1,6 +1,12 @@
-# my-scripts
-Home-made scripts for installing, launching, configuring, ...etc various stuff
+# Developer toolkit
 
+Personal scripts, tool configurations, and workflow helpers.
 
-- `install-openstreetmap-tile-server.sh` : Script to install the __OpenStreet Map__ tile server to render any map on a local server (__offline__).
-- `kafka-start-consumer.sh` : For launchig __ZooKeeper__ and __Kafka__ servers, and to start a __consumer__ from a given __topic__.
+## Tool configurations
+
+- [Herdr](herdr/): workspace and pane shortcuts, a compact interface, workflow preferences, and restore instructions.
+
+## Scripts
+
+- [install-openstreetmap-tile-server.sh](install-openstreetmap-tile-server.sh): install an OpenStreetMap tile server for offline use.
+- [kafka-start-consumer.sh](kafka-start-consumer.sh): start ZooKeeper, Kafka, and a consumer for a given topic.

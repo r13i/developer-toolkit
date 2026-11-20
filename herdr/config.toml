@@ -1,0 +1,46 @@
+onboarding = false
+
+[ui.toast]
+delivery = "terminal"
+
+[ui]
+window_title = "{workspace}"
+status_indicators = "symbols"
+hide_tab_bar_when_single_tab = true
+
+[ui.sound]
+enabled = false
+
+[theme]
+name = "catppuccin"
+auto_switch = false
+
+[keys]
+prefix = ["ctrl+space", "ctrl+b"]
+
+# Workspace actions. Go To (prefix+g) replaces workspace navigation.
+new_workspace = "prefix+w"
+close_workspace = "prefix+shift+w"
+workspace_picker = ""
+rename_workspace = ""
+new_worktree = ["prefix+n", "prefix+shift+g"]
+next_workspace = "prefix+tab"
+previous_workspace = "prefix+shift+tab"
+
+# These keys cycle workspaces rather than panes.
+cycle_pane_next = ""
+cycle_pane_previous = ""
+
+# Pane actions. Keep the original split, close, and zoom keys as aliases.
+split_vertical = ["prefix+p", "prefix+v"]
+close_pane = ["prefix+shift+p", "prefix+x"]
+rename_pane = ""
+zoom = ["prefix+m", "prefix+z"]
+
+# The user manages tabs in the outer terminal, not in Herdr.
+new_tab = ""
+rename_tab = ""
+previous_tab = ""
+next_tab = ""
+switch_tab = ""
+close_tab = ""
