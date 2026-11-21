@@ -6,7 +6,12 @@ delivery = "terminal"
 [ui]
 window_title = "{workspace}"
 status_indicators = "symbols"
-hide_tab_bar_when_single_tab = true
+# Keep one bottom row visible for the shortcut cheat sheet.
+hide_tab_bar_when_single_tab = false
+tab_bar_position = "bottom"
+tab_bar_right = [
+  { type = "text", text = "Ctrl+Space > Tab/Shift+Tab cycle | w/W space | p/P pane | - below | n worktree | m zoom | g find | ? help; CAPS=Shift" },
+]
 
 [ui.sound]
 enabled = false

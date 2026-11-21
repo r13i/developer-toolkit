@@ -25,9 +25,19 @@ Press **Ctrl+Space**, release the keys, then press an action key. **Ctrl+B** rem
 
 Direct **Ctrl+Tab** and **Ctrl+Shift+Tab** remain available to the outer terminal, such as iTerm. Their Herdr equivalents use the prefix followed by Tab or Shift+Tab.
 
-Herdr tab-management shortcuts are disabled. The tab row is hidden when a workspace has one tab. Use the outer terminal for tabs and right-click menus for renaming Herdr workspaces or panes.
+Herdr tab-management shortcuts are disabled. Use the outer terminal for tabs and right-click menus for renaming Herdr workspaces or panes.
 
 Closing a workspace leaves its Git checkout on disk. Use the worktree controls separately to delete checkout files.
+
+## Visible shortcut strip
+
+A compact cheat sheet stays visible along the bottom of the terminal area. It starts with `Ctrl+Space >` to show that each action follows the prefix. Uppercase letters mean Shift: `w/W` creates or closes a workspace, and `p/P` splits or closes a pane.
+
+The strip includes workspace cycling, workspace and pane actions, splitting below, worktrees, zoom, search, and help. Press the prefix followed by `?` for the full active keymap.
+
+Herdr TUI 0.9.5 renders this text in the tab row's status area. The row stays visible even with one tab so the cheat sheet remains available; tab shortcuts remain disabled. The status area hides if the terminal becomes too narrow to fit the whole strip.
+
+The Agents section in the left sidebar cannot be replaced with arbitrary text through the TUI's configuration. This profile uses the supported bottom status strip instead.
 
 ## Apply or restore
 
