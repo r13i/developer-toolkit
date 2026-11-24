@@ -323,7 +323,7 @@ def sidebar_scope_title(label):
     has_duration = scope and duration.endswith(("m", "h", "d")) and duration[:-1].isdigit() and len(duration) < 7
     suffix = f" {duration}" if has_duration else ""
     scope = scope if has_duration else label
-    budget = 19 - len(suffix)
+    budget = 19 - sum(map(glyph_columns, suffix))
     left = clip(scope, budget // 2).rstrip()
     right = clip(scope[::-1], budget - budget // 2)[::-1].lstrip()
     return f"{left}…{right}{suffix}"
@@ -347,7 +347,13 @@ def sidebar_tokens(readings, now):
                 window.resets_at if window.resets_at is not None else math.inf,
                 window.label.casefold(),
             ))
-            tokens[slots[0][1]] = sidebar_scope_title(scoped.label)
+            title = sidebar_scope_title(scoped.label)
+            # If two scopes look identical at this width, point to their complete labels.
+            if any(window.label != scoped.label and sidebar_scope_title(window.label) == title
+                   for window in reading.windows):
+                tokens[fallback_token] = f"{name} details · u"
+                continue
+            tokens[slots[0][1]] = title
             selected = [(fallback_token, name, scoped)]
 
         for token, label, window in selected:

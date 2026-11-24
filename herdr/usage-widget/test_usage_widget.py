@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import tempfile
 import time
+import unicodedata
 import unittest
 from datetime import datetime
 from unittest.mock import patch
@@ -81,6 +82,22 @@ class UsageWidgetTests(unittest.TestCase):
         self.assertEqual(codex, "GPT-5.3-Codex 5h")
         self.assertTrue(spark.endswith("Spark 5h"))
         self.assertNotEqual(codex, spark)
+
+    def test_ambiguous_scoped_title_points_to_the_full_quota_details(self):
+        now = 1795500000
+        readings = {"codex": widget.Reading((
+            widget.Window("Model-01A-Shared-Weekly 5h", 80, now + 300),
+            widget.Window("Model-01B-Shared-Weekly 5h", 20, now + 600),
+        ), now)}
+        tokens = widget.sidebar_tokens(readings, now)
+        self.assertEqual(tokens["usage_codex_7d"], "Codex details · u")
+        self.assertNotIn("usage_codex_5h", tokens)
+
+    def test_scope_title_fits_with_a_wide_duration_suffix(self):
+        title = widget.sidebar_scope_title("Long provider model scope １２h")
+        columns = sum(2 if unicodedata.east_asian_width(char) in ("W", "F") else 1 for char in title)
+        self.assertTrue(title.endswith("１２h"))
+        self.assertLessEqual(columns, 20)
 
     def test_sidebar_labels_previous_readings_without_showing_old_bars(self):
         now = 1795500000
