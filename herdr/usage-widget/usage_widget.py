@@ -284,20 +284,30 @@ def local_reset(resets_at):
     return datetime.fromtimestamp(math.floor((resets_at + 30) / 60) * 60).astimezone()
 
 
-def bar_window(window, now):
-    label = window.label if len(window.label) <= 32 else window.label[:31].rstrip() + "…"
+def bar_window(window, now, limit=None):
     if window.resets_at and window.resets_at <= now:
-        return f"{label} reset due"
-    used = f"{label} {usage_percent(window.used)}"
-    if window.resets_at is None:
-        return used
-    reset = local_reset(window.resets_at)
-    fmt = "%H:%M" if reset.date() == datetime.fromtimestamp(now).date() else "%a %H:%M"
-    return f"{used} @ {reset:{fmt}}"
+        detail = "reset due"
+    else:
+        detail = usage_percent(window.used)
+        if window.resets_at is not None:
+            reset = local_reset(window.resets_at)
+            fmt = "%H:%M" if reset.date() == datetime.fromtimestamp(now).date() else "%a %H:%M"
+            detail += f" @ {reset:{fmt}}"
+
+    label = window.label
+    if limit is not None and len(label) + len(detail) + 1 > limit:
+        budget = limit - len(detail) - 1
+        scope, _, duration = label.rpartition(" ")
+        if scope and (duration == "limit" or (duration.endswith(("m", "h", "d")) and duration[:-1].isdigit())):
+            label = scope[:budget - len(duration) - 2].rstrip() + f"… {duration}"
+        else:
+            label = label[:budget - 1].rstrip() + "…"
+    return f"{label} {detail}"
 
 
 def bar_line(readings, now, selected_provider=None):
     entries = []
+    used_prefix = "Used · "
     providers = (selected_provider,) if selected_provider else tuple(PROVIDERS)
     for provider in providers:
         short, _ = PROVIDERS[provider]
@@ -308,10 +318,15 @@ def bar_line(readings, now, selected_provider=None):
         standard = [row for row in reading.windows if row.label in ("5h", "7d")]
         if provider == "claude":
             standard += [row for row in reading.windows if row.label.casefold() == "fable"]
-        windows = " ".join(bar_window(row, now) for row in (standard or reading.windows[:1]))
         suffix = " (stale)" if is_stale(reading, now) else ""
+        if standard:
+            windows = " ".join(bar_window(row, now) for row in standard)
+        else:
+            prefix_size = len(used_prefix) if provider == "codex" else 0
+            budget = HERDR_MAX_STATUS_CHARS - prefix_size - len(short) - len(suffix) - 1
+            windows = bar_window(reading.windows[0], now, budget)
         entries.append(f"{short} {windows}{suffix}")
-    prefix = "Used · " if selected_provider != "claude" else ""
+    prefix = used_prefix if selected_provider != "claude" else ""
     return prefix + " · ".join(entries)
 
 

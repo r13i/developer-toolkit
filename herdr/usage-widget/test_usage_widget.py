@@ -66,11 +66,18 @@ class UsageWidgetTests(unittest.TestCase):
 
     def test_long_scoped_limit_name_leaves_room_for_the_reset_time(self):
         now = datetime.now().replace(hour=12, minute=0).timestamp()
-        window = widget.Window("Long scoped limit " * 4, 75, now + 3600)
+        window = widget.Window("Enterprise multi-team research model allocation for slow lane 5h", 75, now + 3600)
         readings = {"codex": widget.Reading((window,), now)}
         line = widget.status_entry(readings, now, "codex", 250)
         self.assertLessEqual(len(line), 80)
-        self.assertRegex(line, r"75% @ \d{2}:\d{2}$")
+        self.assertRegex(line, r"5h 75% @ \d{2}:\d{2}$")
+
+    def test_scoped_limit_name_is_intact_when_the_entry_fits(self):
+        now = datetime.now().replace(hour=12, minute=0).timestamp()
+        label = "Enterprise Research Model Allocation 5h"
+        reading = widget.Reading((widget.Window(label, 75, now + 3600),), now)
+        line = widget.status_entry({"codex": reading}, now, "codex", 250)
+        self.assertIn(f"{label} 75% @ ", line)
 
     def test_narrow_layout_drops_usage_to_keep_the_shortcut_strip(self):
         now = timestamp("2026-11-25T00:00:00+00:00")
