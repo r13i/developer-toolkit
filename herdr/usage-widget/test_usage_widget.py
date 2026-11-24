@@ -90,7 +90,7 @@ class UsageWidgetTests(unittest.TestCase):
             widget.Window("Model-01B-Shared-Weekly 5h", 20, now + 600),
         ), now)}
         tokens = widget.sidebar_tokens(readings, now)
-        self.assertEqual(tokens["usage_codex_7d"], "Codex details · u")
+        self.assertEqual(tokens["usage_codex_7d"], "Codex · prefix+u")
         self.assertNotIn("usage_codex_5h", tokens)
 
     def test_scope_title_fits_with_a_wide_duration_suffix(self):

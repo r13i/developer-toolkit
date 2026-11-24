@@ -351,7 +351,7 @@ def sidebar_tokens(readings, now):
             # If two scopes look identical at this width, point to their complete labels.
             if any(window.label != scoped.label and sidebar_scope_title(window.label) == title
                    for window in reading.windows):
-                tokens[fallback_token] = f"{name} details · u"
+                tokens[fallback_token] = f"{name} · prefix+u"
                 continue
             tokens[slots[0][1]] = title
             selected = [(fallback_token, name, scoped)]
