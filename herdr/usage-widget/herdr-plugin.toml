@@ -1,0 +1,20 @@
+id = "herdr-usage-widget"
+name = "Usage Widget"
+version = "0.1.0"
+min_herdr_version = "0.9.5"
+description = "Codex and Claude account usage with local reset times"
+platforms = ["macos", "linux"]
+
+[[actions]]
+id = "open"
+title = "Open usage details"
+contexts = ["global", "workspace", "pane"]
+command = ["/bin/sh", "-c", 'exec "${HERDR_BIN_PATH:-herdr}" plugin pane open --plugin herdr-usage-widget --entrypoint details']
+
+[[panes]]
+id = "details"
+title = "Account usage"
+placement = "popup"
+width = "80%"
+height = "60%"
+command = ["/bin/sh", "-c", 'exec python3 -I "$HERDR_PLUGIN_ROOT/usage_widget.py" popup']

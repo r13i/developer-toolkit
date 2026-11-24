@@ -6,11 +6,12 @@ delivery = "terminal"
 [ui]
 window_title = "{workspace}"
 status_indicators = "symbols"
-# Keep one bottom row visible for the shortcut cheat sheet.
+# Keep the shortcuts and account usage visible in single-tab workspaces.
 hide_tab_bar_when_single_tab = false
 tab_bar_position = "bottom"
 tab_bar_right = [
-  { type = "text", text = "Ctrl+Space > Tab/Shift+Tab cycle | w/W space | p/P pane | - below | n worktree | m zoom | g find | ? help; CAPS=Shift" },
+  { type = "text", text = "Ctrl+Space > Tab/S-Tab cycle | w/W space | p/P pane | - below | n tree | m zoom | g find | ? help | u usage" },
+  { type = "command", command = 'exec python3 -I "${XDG_CONFIG_HOME:-$HOME/.config}/herdr/usage-widget/usage_widget.py" bar', interval_seconds = 300, timeout_seconds = 20 },
 ]
 
 [ui.sound]
@@ -49,3 +50,9 @@ previous_tab = ""
 next_tab = ""
 switch_tab = ""
 close_tab = ""
+
+[[keys.command]]
+key = "prefix+u"
+type = "plugin_action"
+command = "herdr-usage-widget.open"
+description = "open account usage"
