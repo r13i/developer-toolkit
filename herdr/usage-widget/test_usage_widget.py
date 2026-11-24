@@ -106,6 +106,17 @@ class UsageWidgetTests(unittest.TestCase):
         self.assertIn("CC 5h 50% @ 13:00", widget.status_entry(readings, now, "claude", 165))
         self.assertEqual(widget.status_entry(readings, now, "codex", 165), "")
 
+    def test_fresh_usage_fits_before_stale_readings(self):
+        now = datetime.now().replace(hour=12, minute=0, second=0).timestamp()
+        stale = tuple(widget.Window(label, 70, now + 3600) for label in ("5h", "7d"))
+        fresh = widget.Window("5h", 50, now + 3600)
+        readings = {
+            "codex": widget.Reading(stale, now, stale=True),
+            "claude": widget.Reading((fresh,), now),
+        }
+        self.assertIn("CC 5h 50% @ 13:00", widget.status_entry(readings, now, "claude", 175))
+        self.assertEqual(widget.status_entry(readings, now, "codex", 175), "")
+
     def test_fable_stays_visible_when_codex_scope_can_be_shortened(self):
         now = datetime.now().replace(hour=12, minute=0, second=0).timestamp()
         readings = {

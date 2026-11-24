@@ -362,10 +362,13 @@ def status_entry(readings, now, provider, columns):
     def priority(name):
         reading = readings.get(name)
         if not reading or not reading.windows:
-            return 2
-        return 0 if standard_windows(name, reading.windows) else 1
+            return (2, False)
+        active_window = any(row.resets_at is None or row.resets_at > now for row in reading.windows)
+        needs_refresh = is_stale(reading, now) or not active_window
+        flexible_scope = not standard_windows(name, reading.windows)
+        return (int(needs_refresh), flexible_scope)
 
-    # Reserve the fixed windows first. Scoped names can shorten to fit what remains.
+    # Fit fresh quota first. Within each tier, shorten scoped names after fixed windows.
     for name in sorted(entries, key=priority):
         entry = entries[name]
         if entry_width(entry) > remaining:
