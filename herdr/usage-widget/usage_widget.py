@@ -306,20 +306,25 @@ def sidebar_tokens(readings, now):
     tokens = {"usage_heading": "Quota · % used"}
     for provider, slots in SIDEBAR_WINDOWS.items():
         reading = readings.get(provider)
+        fallback_token = slots[1][1]
+        name = PROVIDERS[provider].split()[0]
         if not reading or not reading.windows:
-            tokens[slots[1][1]] = f"{PROVIDERS[provider].split()[0]} unavailable"
+            tokens[fallback_token] = f"{name} unavailable"
             continue
         windows = {window.label.casefold(): window for window in reading.windows}
-        for key, token, label in slots:
-            window = windows.get(key)
-            if not window:
-                continue
+        selected = [(token, label, windows[key]) for key, token, label in slots if key in windows]
+        if not selected:
+            selected = [(fallback_token, f"{name} scope", reading.windows[0])]
+
+        for token, label, window in selected:
             if window.resets_at is not None and window.resets_at <= now:
                 value = "reset due"
             elif is_stale(reading, now):
                 value = "stale"
             else:
-                value = f"{math.floor(window.used)}% {progress_bar(window.used, 5)}"
+                # Fit the provider label, whole percent, and bar in the default sidebar.
+                width = min(5, 14 - len(label))
+                value = f"{math.floor(window.used)}% {progress_bar(window.used, width)}"
             tokens[token] = f"{label} {value}"
     return tokens
 

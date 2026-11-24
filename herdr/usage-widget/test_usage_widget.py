@@ -56,6 +56,14 @@ class UsageWidgetTests(unittest.TestCase):
         self.assertEqual(tokens["usage_fable"], "Fable 7d 25% █░░░░")
         self.assertNotIn("usage_codex_5h", tokens)
 
+    def test_sidebar_keeps_a_bar_when_only_scoped_usage_is_reported(self):
+        now = 1795500000
+        readings = {"codex": widget.Reading((
+            widget.Window("Research model 5h", 65, now + 300),
+        ), now)}
+        tokens = widget.sidebar_tokens(readings, now)
+        self.assertEqual(tokens["usage_codex_7d"], "Codex scope 65% ██░")
+
     def test_sidebar_labels_previous_readings_without_showing_old_bars(self):
         now = 1795500000
         readings = {
