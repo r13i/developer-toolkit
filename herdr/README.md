@@ -38,17 +38,15 @@ A compact cheat sheet stays visible along the bottom of the terminal area. It st
 
 The strip includes workspace cycling, workspace and pane actions, splitting below, worktrees, zoom, search, and help. Press the prefix followed by `?` for the full active keymap.
 
-Herdr renders the shortcuts and usage in the tab row's status area. The row stays visible with one tab. If space is tight, view any usage that does not fit beside the shortcuts in the popup. Open it with the prefix followed by `u`.
-
-The Agents section in the left sidebar cannot be replaced with arbitrary text through the TUI's configuration. This profile uses the supported bottom status strip instead.
+Herdr renders the shortcuts in the tab row's status area. The row stays visible with one tab.
 
 ## Account usage
 
-The bottom strip shows percent used and local reset times for Codex and Claude Code. Claude's Fable allowance has its own gauge when the account reports it. Press **Ctrl+Space**, then **u**, for full reset dates, time zones, countdowns, and the installed Herdr plugin list. Use the arrow keys to scroll. Press **q** or **Esc** to close.
+The expanded sidebar shows a progress bar and percent used for each main quota beneath the active workspace. Fable has a separate weekly bar when Claude reports it. Press **Ctrl+Space**, then **u**, for larger bars, all reported quota windows, full local reset dates, countdowns, and the installed Herdr plugin list. Use the arrow keys to scroll. Press **q** or **Esc** to close.
 
 The widget refreshes every five minutes through the signed-in CLIs. It shows only the quota windows each account reports. It flags stale readings and waits for new data after a reset. Herdr plugins and other installed integrations without a quota feed show `quota unavailable`.
 
-The widget requires Herdr 0.9.5 or later and Python 3.10 or later on macOS or Linux. It uses Codex's App Server and Claude Code's experimental usage request. The Claude probe runs in safe mode with telemetry, update checks, and error reporting disabled. Both CLIs use their existing sign-ins. The widget stores only usage windows and their timestamps in `$XDG_STATE_HOME/herdr/usage-widget/`, which defaults to `~/.local/state/herdr/usage-widget/`. It does not read credentials, browser cookies, or transcripts.
+The widget requires Herdr 0.9.5 or later and Python 3.10 or later on macOS or Linux. It uses Codex's App Server and Claude Code's experimental usage request. The Claude probe runs in safe mode with telemetry, update checks, and error reporting disabled. Both CLIs use their existing sign-ins. The widget stores usage windows, their timestamps, and the last workspace ID it updated for each local Herdr session in `$XDG_STATE_HOME/herdr/usage-widget/`, which defaults to `~/.local/state/herdr/usage-widget/`. It does not read credentials, browser cookies, or transcripts.
 
 ## Apply or restore
 
@@ -78,7 +76,7 @@ herdr server reload-config
 )
 ```
 
-Start Herdr before applying the profile so the link and reload commands can reach the server. If you use `HERDR_CONFIG_PATH`, copy `config.toml` to that path. Keep the plugin directory at `${XDG_CONFIG_HOME:-$HOME/.config}/herdr/usage-widget` for the bottom strip.
+Start Herdr before applying the profile so the link and reload commands can reach the server. If you use `HERDR_CONFIG_PATH`, copy `config.toml` to that path. Keep the plugin directory at `${XDG_CONFIG_HOME:-$HOME/.config}/herdr/usage-widget` for the scheduled refresh.
 
 Run the widget checks from the repository root with `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s herdr/usage-widget -v`.
 

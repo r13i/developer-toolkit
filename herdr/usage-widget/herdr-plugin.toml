@@ -15,6 +15,10 @@ command = ["/bin/sh", "-c", 'exec "${HERDR_BIN_PATH:-herdr}" plugin pane open --
 id = "details"
 title = "Account usage"
 placement = "popup"
-width = "80%"
-height = "60%"
+width = "75%"
+height = "80%"
 command = ["/bin/sh", "-c", 'exec python3 -I "$HERDR_PLUGIN_ROOT/usage_widget.py" popup']
+
+[[events]]
+on = "workspace.focused"
+command = ["/bin/sh", "-c", 'exec python3 -I "$HERDR_PLUGIN_ROOT/usage_widget.py" sidebar']

@@ -39,115 +39,46 @@ class UsageWidgetTests(unittest.TestCase):
         )
         self.assertEqual(windows[-1].resets_at, timestamp(reset))
 
-    def test_bar_shows_percent_used_and_local_reset_time_across_dst(self):
+    def test_sidebar_has_a_separate_readable_bar_for_each_quota(self):
+        now = 1795500000
+        readings = {
+            "codex": widget.Reading((widget.Window("7d", 50, now + 300),), now),
+            "claude": widget.Reading((
+                widget.Window("5h", 0, now + 300),
+                widget.Window("7d", 100, now + 300),
+                widget.Window("Fable", 25, now + 300),
+            ), now),
+        }
+        tokens = widget.sidebar_tokens(readings, now)
+        self.assertEqual(tokens["usage_codex_7d"], "Codex 7d 50% ███░░")
+        self.assertEqual(tokens["usage_claude_5h"], "Claude 5h 0% ░░░░░")
+        self.assertEqual(tokens["usage_claude_7d"], "Claude 7d 100% █████")
+        self.assertEqual(tokens["usage_fable"], "Fable 7d 25% █░░░░")
+        self.assertNotIn("usage_codex_5h", tokens)
+
+    def test_sidebar_labels_previous_readings_without_showing_old_bars(self):
+        now = 1795500000
+        readings = {
+            "codex": widget.Reading((widget.Window("7d", 77, now - 1),), now),
+            "claude": widget.Reading((widget.Window("5h", 88, now + 300),), now, stale=True),
+        }
+        tokens = widget.sidebar_tokens(readings, now)
+        self.assertEqual(tokens["usage_codex_7d"], "Codex 7d reset due")
+        self.assertEqual(tokens["usage_claude_5h"], "Claude 5h stale")
+
+    def test_popup_puts_bar_and_local_reset_on_separate_lines(self):
         now = timestamp("2026-10-24T14:00:00+00:00")
         reset = timestamp("2026-10-25T15:00:00+00:00")
         try:
             with patch.dict(os.environ, {"TZ": "Europe/Stockholm"}):
                 time.tzset()
-                reading = widget.Reading((widget.Window("7d", 90, reset),), now)
-                line = widget.bar_line({"codex": reading}, now)
+                reading = widget.Reading((widget.Window("Fable", 50, reset),), now)
+                lines = widget.detail_lines({"claude": reading}, [], now)
         finally:
             time.tzset()
-        self.assertIn("Used", line)
-        self.assertIn("7d 90% @ Sun 16:00", line)
-        self.assertIn("CC unavailable", line)
-
-    def test_each_herdr_status_entry_keeps_its_full_reset_times(self):
-        now = timestamp("2026-11-25T00:00:00+00:00")
-        codex = widget.Reading((widget.Window("5h", 44, now + 3600), widget.Window("7d", 65, now + 86400)), now)
-        claude = widget.Reading((*codex.windows, widget.Window("Fable", 32, now + 86400)), now)
-        readings = {"codex": codex, "claude": claude}
-        for provider, last_label in (("codex", "7d"), ("claude", "Fable")):
-            with self.subTest(provider=provider):
-                line = widget.bar_line(readings, now, provider)
-                self.assertLessEqual(len(line), 80)
-                self.assertRegex(line, rf"{last_label} \d+% @ \w+ \d{{2}}:\d{{2}}$")
-
-    def test_long_scoped_limit_name_leaves_room_for_the_reset_time(self):
-        now = datetime.now().replace(hour=12, minute=0).timestamp()
-        window = widget.Window("Enterprise multi-team research model allocation for slow lane 5h", 75, now + 3600)
-        readings = {"codex": widget.Reading((window,), now)}
-        line = widget.status_entry(readings, now, "codex", 250)
-        self.assertLessEqual(len(line), 80)
-        self.assertRegex(line, r"5h 75% @ \d{2}:\d{2}$")
-
-    def test_scoped_limit_name_is_intact_when_the_entry_fits(self):
-        now = datetime.now().replace(hour=12, minute=0).timestamp()
-        label = "Enterprise Research Model Allocation 5h"
-        reading = widget.Reading((widget.Window(label, 75, now + 3600),), now)
-        line = widget.status_entry({"codex": reading}, now, "codex", 250)
-        self.assertIn(f"{label} 75% @ ", line)
-
-    def test_narrow_layout_drops_usage_to_keep_the_shortcut_strip(self):
-        now = timestamp("2026-11-25T00:00:00+00:00")
-        weekly = widget.Window("7d", 50, now + 86400)
-        fable = widget.Window("Fable", 65, now + 86400)
-        readings = {"codex": widget.Reading((weekly,), now), "claude": widget.Reading((weekly, fable), now)}
-        self.assertEqual(widget.status_entry(readings, now, "claude", 160), "")
-        self.assertIn("Fable 65%", widget.status_entry(readings, now, "claude", 219))
-
-    def test_fitting_claude_entry_survives_a_long_codex_scope(self):
-        now = datetime.now().replace(hour=12, minute=0, second=0).timestamp()
-        readings = {
-            "codex": widget.Reading((widget.Window("Enterprise Research Model Allocation 5h", 75, now + 3600),), now),
-            "claude": widget.Reading((widget.Window("5h", 50, now + 3600),), now),
-        }
-        codex = widget.status_entry(readings, now, "codex", 200)
-        claude = widget.status_entry(readings, now, "claude", 200)
-        self.assertIn("CC 5h 50% @ 13:00", claude)
-        self.assertIn("5h 75% @ 13:00", codex)
-        self.assertLessEqual(len(codex) + len(claude), 75)
-
-    def test_live_usage_fits_before_unavailable_placeholders(self):
-        now = datetime.now().replace(hour=12, minute=0, second=0).timestamp()
-        windows = (widget.Window("5h", 50, now + 3600), widget.Window("7d", 60, now + 3600))
-        readings = {"claude": widget.Reading(windows, now)}
-        self.assertIn("CC 5h 50% @ 13:00", widget.status_entry(readings, now, "claude", 165))
-        self.assertEqual(widget.status_entry(readings, now, "codex", 165), "")
-
-    def test_fresh_usage_fits_before_stale_readings(self):
-        now = datetime.now().replace(hour=12, minute=0, second=0).timestamp()
-        stale = tuple(widget.Window(label, 70, now + 3600) for label in ("5h", "7d"))
-        fresh = widget.Window("5h", 50, now + 3600)
-        readings = {
-            "codex": widget.Reading(stale, now, stale=True),
-            "claude": widget.Reading((fresh,), now),
-        }
-        self.assertIn("CC 5h 50% @ 13:00", widget.status_entry(readings, now, "claude", 175))
-        self.assertEqual(widget.status_entry(readings, now, "codex", 175), "")
-
-    def test_an_unshown_scope_does_not_make_an_expired_entry_fresh(self):
-        now = datetime.now().replace(hour=12, minute=0, second=0).timestamp()
-        readings = {
-            "codex": widget.Reading((
-                widget.Window("5h", 70, now - 1),
-                widget.Window("Extra 7d", 15, now + 3600),
-            ), now),
-            "claude": widget.Reading((widget.Window("5h", 50, now + 3600),), now),
-        }
-        self.assertIn("CC 5h 50% @ 13:00", widget.status_entry(readings, now, "claude", 150))
-        self.assertEqual(widget.status_entry(readings, now, "codex", 150), "")
-
-    def test_fable_stays_visible_when_codex_scope_can_be_shortened(self):
-        now = datetime.now().replace(hour=12, minute=0, second=0).timestamp()
-        readings = {
-            "codex": widget.Reading((widget.Window("Enterprise Allocation 5h", 75, now + 3600),), now),
-            "claude": widget.Reading(tuple(widget.Window(label, 50, now + 3600)
-                                           for label in ("5h", "7d", "Fable")), now),
-        }
-        codex = widget.status_entry(readings, now, "codex", 205)
-        claude = widget.status_entry(readings, now, "claude", 205)
-        self.assertIn("5h 75% @ 13:00", codex)
-        self.assertIn("Fable 50% @ 13:00", claude)
-        self.assertLessEqual(len(codex) + len(claude), 80)
-
-    def test_scoped_label_compacts_wide_glyphs_by_terminal_columns(self):
-        now = datetime.now().replace(hour=12, minute=0, second=0).timestamp()
-        reading = widget.Reading((widget.Window("研究開発部門特別割当枠 5h", 75, now + 3600),), now)
-        line = widget.status_entry({"codex": reading}, now, "codex", 155)
-        self.assertIn("… 5h 75% @ 13:00", line)
-        self.assertLessEqual(widget.entry_width(line), 30)
+        title = lines.index("  Fable weekly")
+        self.assertEqual(lines[title + 1], "  " + "█" * 12 + "░" * 12 + "  50% used")
+        self.assertIn("Sun 25 Oct 16:00 CET", lines[title + 2])
 
     def test_local_reset_uses_nearest_minute(self):
         before = timestamp("2026-11-25T00:59:59.701567+00:00")
@@ -161,25 +92,25 @@ class UsageWidgetTests(unittest.TestCase):
                 '{"codex":{"windows":[{"label":"7d","used":null,"resets_at":null}],"checked_at":1795500000,"stale":false},'
                 '"claude":{"windows":[{"label":"5h","used":12,"resets_at":null}],"checked_at":1795500000,"stale":false}}'
             )
-            line = widget.bar_line(widget.read_cache(cache), 1795500000)
-            self.assertIn("CDX unavailable", line)
-            self.assertIn("CC 5h 12%", line)
+            tokens = widget.sidebar_tokens(widget.read_cache(cache), 1795500000)
+            self.assertEqual(tokens["usage_codex_7d"], "Codex unavailable")
+            self.assertIn("Claude 5h 12%", tokens["usage_claude_5h"])
 
     def test_failed_refresh_keeps_other_provider_and_marks_old_data_stale(self):
         now = timestamp("2026-11-25T00:00:00+00:00")
         codex = widget.Reading((widget.Window("7d", 20, None),), now - 60)
         claude = widget.Window("Fable", 30, None)
         readings = widget.update_readings({"codex": codex}, [None, (claude,)], now)
-        line = widget.bar_line(readings, now)
-        self.assertIn("CDX 7d 20% (stale)", line)
-        self.assertIn("CC Fable 30%", line)
+        tokens = widget.sidebar_tokens(readings, now)
+        self.assertEqual(tokens["usage_codex_7d"], "Codex 7d stale")
+        self.assertIn("Fable 7d 30%", tokens["usage_fable"])
 
     def test_expired_window_does_not_show_previous_usage_as_current(self):
         now = timestamp("2026-11-25T00:00:00+00:00")
         reading = widget.Reading((widget.Window("5h", 100, now - 1),), now - 60)
-        line = widget.bar_line({"claude": reading}, now)
-        self.assertIn("5h reset due", line)
-        self.assertNotIn("100%", line)
+        lines = widget.detail_lines({"claude": reading}, [], now)
+        self.assertTrue(any("Reset passed" in line for line in lines))
+        self.assertFalse(any("100%" in line for line in lines))
 
     def test_a_slow_probe_does_not_skip_the_next_five_minute_refresh(self):
         now = int(time.time()) - 10

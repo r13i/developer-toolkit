@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import curses
 import fcntl
+import hashlib
 import json
 import math
 import os
@@ -12,18 +13,28 @@ import subprocess
 import tempfile
 import textwrap
 import time
-import unicodedata
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
 REFRESH_SECONDS = 300
 PROBE_TIMEOUT = 12
-# Reserve the bundled shortcut text, separators, and space for Herdr tab controls.
-TAB_BAR_RESERVED_COLUMNS = 125
-HERDR_MAX_STATUS_CHARS = 80
-USED_PREFIX = "Used · "
-PROVIDERS = {"codex": ("CDX", "Codex"), "claude": ("CC", "Claude Code")}
+PROVIDERS = {"codex": "Codex", "claude": "Claude Code"}
+SIDEBAR_WINDOWS = {
+    "codex": (
+        ("5h", "usage_codex_5h", "Codex 5h"),
+        ("7d", "usage_codex_7d", "Codex 7d"),
+    ),
+    "claude": (
+        ("5h", "usage_claude_5h", "Claude 5h"),
+        ("7d", "usage_claude_7d", "Claude 7d"),
+        ("fable", "usage_fable", "Fable 7d"),
+    ),
+}
+SIDEBAR_TOKEN_NAMES = ("usage_heading", *(
+    token for windows in SIDEBAR_WINDOWS.values() for _, token, _ in windows
+))
+SIDEBAR_TTL_MS = 45000
 
 
 @dataclass(frozen=True)
@@ -258,7 +269,7 @@ def refresh_cache(path):
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     fd = os.open(path.with_suffix(".lock"), os.O_RDWR | os.O_CREAT, 0o600)
     with os.fdopen(fd, "r+") as lock:
-        # Both Herdr status entries share one refresh and render the same snapshot.
+        # Named Herdr sessions share the provider cache.
         fcntl.flock(lock, fcntl.LOCK_EX)
         now = time.time()
         try:
@@ -286,116 +297,65 @@ def local_reset(resets_at):
     return datetime.fromtimestamp(math.floor((resets_at + 30) / 60) * 60).astimezone()
 
 
-def bar_window(window, now, max_chars=math.inf, max_columns=math.inf):
-    if window.resets_at and window.resets_at <= now:
-        detail = "reset due"
-    else:
-        detail = usage_percent(window.used)
-        if window.resets_at is not None:
-            reset = local_reset(window.resets_at)
-            fmt = "%H:%M" if reset.date() == datetime.fromtimestamp(now).date() else "%a %H:%M"
-            detail += f" @ {reset:{fmt}}"
-
-    label = window.label
-    full = f"{label} {detail}"
-    if len(full) <= max_chars and entry_width(full) <= max_columns:
-        return full
-
-    scope, _, duration = label.rpartition(" ")
-    has_duration = scope and (
-        duration == "limit" or (duration.endswith(("m", "h", "d")) and duration[:-1].isdigit())
-    )
-    head = scope if has_duration else label
-    tail = f"… {duration} {detail}" if has_duration else f"… {detail}"
-    chars_left = max_chars - len(tail)
-    columns_left = max_columns - entry_width(tail)
-    shortened = []
-    for char in head:
-        width = entry_width(char)
-        if chars_left < 1 or columns_left < width:
-            break
-        shortened.append(char)
-        chars_left -= 1
-        columns_left -= width
-    return "".join(shortened).rstrip() + tail if shortened else full
+def progress_bar(used, width):
+    filled = math.floor(used * width / 100 + 0.5)
+    return "█" * filled + "░" * (width - filled)
 
 
-def standard_windows(provider, windows):
-    labels = ("5h", "7d", "fable") if provider == "claude" else ("5h", "7d")
-    return [row for row in windows if row.label.casefold() in labels]
-
-
-def bar_line(readings, now, selected_provider=None, max_columns=math.inf):
-    entries = []
-    providers = (selected_provider,) if selected_provider else tuple(PROVIDERS)
-    for provider in providers:
-        short, _ = PROVIDERS[provider]
+def sidebar_tokens(readings, now):
+    tokens = {"usage_heading": "Quota · % used"}
+    for provider, slots in SIDEBAR_WINDOWS.items():
         reading = readings.get(provider)
-        if reading is None or not reading.windows:
-            entries.append(f"{short} unavailable")
-            continue
-        standard = standard_windows(provider, reading.windows)
-        suffix = " (stale)" if is_stale(reading, now) else ""
-        if standard:
-            windows = " ".join(bar_window(row, now) for row in standard)
-        else:
-            padding = (USED_PREFIX if provider == "codex" else "") + f"{short} {suffix}"
-            windows = bar_window(
-                reading.windows[0], now,
-                max_chars=HERDR_MAX_STATUS_CHARS - len(padding),
-                max_columns=max_columns - entry_width(padding),
-            )
-        entries.append(f"{short} {windows}{suffix}")
-    prefix = USED_PREFIX if selected_provider != "claude" else ""
-    return prefix + " · ".join(entries)
-
-
-def entry_width(entry):
-    # Wide glyphs can take two terminal columns even when Herdr counts one character.
-    return sum(2 if unicodedata.east_asian_width(char) in ("W", "F") else 1 for char in entry)
-
-
-def status_entry(readings, now, provider, columns):
-    remaining = columns - TAB_BAR_RESERVED_COLUMNS
-    entries = {name: bar_line(readings, now, name) for name in PROVIDERS}
-    visible = {}
-    def priority(name):
-        reading = readings.get(name)
         if not reading or not reading.windows:
-            return (2, False)
-        standard = standard_windows(name, reading.windows)
-        displayed = standard or reading.windows[:1]
-        active_window = any(row.resets_at is None or row.resets_at > now for row in displayed)
-        needs_refresh = is_stale(reading, now) or not active_window
-        return (int(needs_refresh), not standard)
-
-    # Fit fresh quota first. Within each tier, shorten scoped names after fixed windows.
-    for name in sorted(entries, key=priority):
-        entry = entries[name]
-        if entry_width(entry) > remaining:
-            entry = bar_line(readings, now, name, max_columns=remaining)
-        width = entry_width(entry)
-        if width <= remaining and len(entry) <= HERDR_MAX_STATUS_CHARS:
-            visible[name] = entry
-            remaining -= width
-    if provider == "claude" and provider in visible and "codex" not in visible:
-        if remaining >= len(USED_PREFIX) and len(visible[provider]) + len(USED_PREFIX) <= HERDR_MAX_STATUS_CHARS:
-            return USED_PREFIX + visible[provider]
-    return visible.get(provider, "")
+            tokens[slots[1][1]] = f"{PROVIDERS[provider].split()[0]} unavailable"
+            continue
+        windows = {window.label.casefold(): window for window in reading.windows}
+        for key, token, label in slots:
+            window = windows.get(key)
+            if not window:
+                continue
+            if window.resets_at is not None and window.resets_at <= now:
+                value = "reset due"
+            elif is_stale(reading, now):
+                value = "stale"
+            else:
+                value = f"{math.floor(window.used)}% {progress_bar(window.used, 5)}"
+            tokens[token] = f"{label} {value}"
+    return tokens
 
 
-def herdr_tab_columns():
+def report_sidebar(binary, workspace, tokens):
+    args = [binary, "workspace", "report-metadata", workspace, "--source", "herdr-usage-widget",
+            "--ttl-ms", str(SIDEBAR_TTL_MS)]
+    for name in SIDEBAR_TOKEN_NAMES:
+        args.extend(("--token", f"{name}={tokens[name]}") if name in tokens else ("--clear-token", name))
+    return subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2).returncode == 0
+
+
+def publish_sidebar(path):
     binary = executable("herdr")
-    pane = os.environ.get("HERDR_ACTIVE_PANE_ID")
-    if not binary or not pane:
-        return 0
+    socket = os.environ.get("HERDR_SOCKET_PATH")
+    if not binary or not socket:
+        return
+    # Workspace IDs repeat between named sessions, so track focus per Herdr socket.
+    session = hashlib.sha256(os.fsencode(socket)).hexdigest()[:16]
     try:
-        raw = subprocess.check_output([binary, "pane", "layout", "--pane", pane],
-                                      stderr=subprocess.DEVNULL, timeout=2)
-        width = json.loads(raw)["result"]["layout"]["area"]["width"]
-        return width if type(width) is int else 0
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd = os.open(path.parent / f"sidebar-{session}.workspace", os.O_RDWR | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "r+") as state:
+            fcntl.flock(state, fcntl.LOCK_EX)
+            previous = state.read().strip()
+            result = subprocess.check_output([binary, "workspace", "list"], stderr=subprocess.DEVNULL, timeout=2)
+            workspaces = json.loads(result)["result"]["workspaces"]
+            active = next((row["workspace_id"] for row in workspaces if row.get("focused")), None)
+            if previous and previous != active:
+                report_sidebar(binary, previous, {})
+            if active and report_sidebar(binary, active, sidebar_tokens(read_cache(path), time.time())):
+                state.seek(0)
+                state.write(active)
+                state.truncate()
     except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError):
-        return 0
+        return
 
 
 def countdown(seconds):
@@ -406,13 +366,17 @@ def countdown(seconds):
 
 
 def detail_window(window, now):
+    names = {"5h": "Five-hour window", "7d": "Weekly", "fable": "Fable weekly"}
+    title = f"  {names.get(window.label.casefold(), window.label)}"
+    meter = f"  {progress_bar(window.used, 24)}  {usage_percent(window.used)} used"
     if window.resets_at is None:
-        return f"  {window.label}  {usage_percent(window.used)} used · reset time unavailable"
+        return (title, meter, "  Reset time unavailable", "")
     reset = local_reset(window.resets_at)
+    stamp = f"{reset:%a %d %b %H:%M %Z}"
     remaining = window.resets_at - now
     if remaining <= 0:
-        return f"  {window.label}  Reset passed at {reset:%a %d %b %H:%M %Z} · waiting for new reading"
-    return f"  {window.label}  {usage_percent(window.used)} used · resets {reset:%a %d %b %H:%M %Z} (in {countdown(remaining)})"
+        return (title, f"  Reset passed at {stamp}", "  Waiting for a new reading", "")
+    return (title, meter, f"  Resets {stamp} (in {countdown(remaining)})", "")
 
 
 def herdr_inventory():
@@ -447,7 +411,7 @@ def herdr_inventory():
 
 def detail_lines(readings, inventory, now, integrations=()):
     lines = ["Account usage", ""]
-    for provider, (_, name) in PROVIDERS.items():
+    for provider, name in PROVIDERS.items():
         reading = readings.get(provider)
         if not reading or not reading.windows:
             lines.extend((f"{name} · quota unavailable", ""))
@@ -455,8 +419,8 @@ def detail_lines(readings, inventory, now, integrations=()):
         checked = datetime.fromtimestamp(reading.checked_at).astimezone()
         state = "Stale · " if is_stale(reading, now) else ""
         lines.append(f"{name} · {state}checked {checked:%d %b %H:%M %Z}")
-        lines.extend(detail_window(window, now) for window in reading.windows)
-        lines.append("")
+        for window in reading.windows:
+            lines.extend(detail_window(window, now))
     lines.append("Herdr plugins")
     if inventory is None:
         lines.append("  Plugin inventory unavailable")
@@ -485,7 +449,8 @@ def popup(screen, path, inventory, integrations):
         screen.erase()
         if width > 1:
             for row, line in enumerate(lines[offset:offset + visible]):
-                screen.addnstr(row, 0, line, width - 1)
+                style = curses.A_BOLD if line and (not line.startswith(" ") or line.lstrip().startswith(("█", "░"))) else 0
+                screen.addnstr(row, 0, line, width - 1, style)
             screen.addnstr(height - 1, 0, "↑/↓ scroll · q or Esc close", width - 1, curses.A_DIM)
         screen.refresh()
         key = screen.getch()
@@ -503,22 +468,16 @@ def popup(screen, path, inventory, integrations):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("view", choices=("bar", "details", "popup"))
-    parser.add_argument("--provider", choices=tuple(PROVIDERS), help="render a single Herdr bar entry")
-    parser.add_argument("--fit", action="store_true", help="leave room for the Herdr shortcuts")
+    parser.add_argument("view", choices=("refresh", "sidebar", "details", "popup"))
     args = parser.parse_args()
-    if args.fit and not args.provider:
-        parser.error("--fit requires --provider")
     path = cache_path()
-    if args.view == "bar":
-        try:
-            readings = refresh_cache(path)
-        except OSError:
-            readings = read_cache(path)
-        now = time.time()
-        line = (status_entry(readings, now, args.provider, herdr_tab_columns())
-                if args.fit else bar_line(readings, now, args.provider))
-        print(line)
+    if args.view in ("refresh", "sidebar"):
+        if args.view == "refresh":
+            try:
+                refresh_cache(path)
+            except OSError:
+                pass
+        publish_sidebar(path)
         return
 
     inventory, integrations = herdr_inventory()
