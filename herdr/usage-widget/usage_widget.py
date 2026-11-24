@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 import textwrap
 import time
+import unicodedata
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -302,6 +303,24 @@ def progress_bar(used, width):
     return "█" * filled + "░" * (width - filled)
 
 
+def sidebar_scope_title(name, label):
+    def columns(text):
+        return sum(2 if unicodedata.east_asian_width(char) in ("W", "F") else 1 for char in text)
+
+    title = f"{name} {label}"
+    if columns(title) <= 20:
+        return title
+
+    scope, _, duration = label.rpartition(" ")
+    has_duration = scope and duration.endswith(("m", "h", "d")) and duration[:-1].isdigit()
+    suffix = f" {duration}" if has_duration else ""
+    scope = scope if has_duration else label
+    budget = 20 - columns(f"{name} …{suffix}")
+    while scope and columns(scope) > budget:
+        scope = scope[:-1]
+    return f"{name} {scope.rstrip()}…{suffix}"
+
+
 def sidebar_tokens(readings, now):
     tokens = {"usage_heading": "Quota · % used"}
     for provider, slots in SIDEBAR_WINDOWS.items():
@@ -314,7 +333,14 @@ def sidebar_tokens(readings, now):
         windows = {window.label.casefold(): window for window in reading.windows}
         selected = [(token, label, windows[key]) for key, token, label in slots if key in windows]
         if not selected:
-            selected = [(fallback_token, f"{name} scope", reading.windows[0])]
+            # Prefer a live window and choose consistently even if the provider reorders it.
+            scoped = min(reading.windows, key=lambda window: (
+                window.resets_at is not None and window.resets_at <= now,
+                window.resets_at if window.resets_at is not None else math.inf,
+                window.label.casefold(),
+            ))
+            tokens[slots[0][1]] = sidebar_scope_title(name, scoped.label)
+            selected = [(fallback_token, name, scoped)]
 
         for token, label, window in selected:
             if window.resets_at is not None and window.resets_at <= now:

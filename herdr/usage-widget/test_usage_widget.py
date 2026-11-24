@@ -62,7 +62,18 @@ class UsageWidgetTests(unittest.TestCase):
             widget.Window("Research model 5h", 65, now + 300),
         ), now)}
         tokens = widget.sidebar_tokens(readings, now)
-        self.assertEqual(tokens["usage_codex_7d"], "Codex scope 65% ██░")
+        self.assertEqual(tokens["usage_codex_5h"], "Codex Research m… 5h")
+        self.assertEqual(tokens["usage_codex_7d"], "Codex 65% ███░░")
+
+    def test_sidebar_selects_an_active_scope_and_labels_its_duration(self):
+        now = 1795500000
+        readings = {"codex": widget.Reading((
+            widget.Window("Research model 5h", 90, now - 1),
+            widget.Window("Research model 7d", 35, now + 300),
+        ), now)}
+        tokens = widget.sidebar_tokens(readings, now)
+        self.assertEqual(tokens["usage_codex_5h"], "Codex Research m… 7d")
+        self.assertEqual(tokens["usage_codex_7d"], "Codex 35% ██░░░")
 
     def test_sidebar_labels_previous_readings_without_showing_old_bars(self):
         now = 1795500000
