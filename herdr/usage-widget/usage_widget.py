@@ -363,10 +363,11 @@ def status_entry(readings, now, provider, columns):
         reading = readings.get(name)
         if not reading or not reading.windows:
             return (2, False)
-        active_window = any(row.resets_at is None or row.resets_at > now for row in reading.windows)
+        standard = standard_windows(name, reading.windows)
+        displayed = standard or reading.windows[:1]
+        active_window = any(row.resets_at is None or row.resets_at > now for row in displayed)
         needs_refresh = is_stale(reading, now) or not active_window
-        flexible_scope = not standard_windows(name, reading.windows)
-        return (int(needs_refresh), flexible_scope)
+        return (int(needs_refresh), not standard)
 
     # Fit fresh quota first. Within each tier, shorten scoped names after fixed windows.
     for name in sorted(entries, key=priority):

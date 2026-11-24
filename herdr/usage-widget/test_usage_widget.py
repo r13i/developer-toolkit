@@ -117,6 +117,18 @@ class UsageWidgetTests(unittest.TestCase):
         self.assertIn("CC 5h 50% @ 13:00", widget.status_entry(readings, now, "claude", 175))
         self.assertEqual(widget.status_entry(readings, now, "codex", 175), "")
 
+    def test_an_unshown_scope_does_not_make_an_expired_entry_fresh(self):
+        now = datetime.now().replace(hour=12, minute=0, second=0).timestamp()
+        readings = {
+            "codex": widget.Reading((
+                widget.Window("5h", 70, now - 1),
+                widget.Window("Extra 7d", 15, now + 3600),
+            ), now),
+            "claude": widget.Reading((widget.Window("5h", 50, now + 3600),), now),
+        }
+        self.assertIn("CC 5h 50% @ 13:00", widget.status_entry(readings, now, "claude", 150))
+        self.assertEqual(widget.status_entry(readings, now, "codex", 150), "")
+
     def test_fable_stays_visible_when_codex_scope_can_be_shortened(self):
         now = datetime.now().replace(hour=12, minute=0, second=0).timestamp()
         readings = {
