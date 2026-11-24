@@ -20,6 +20,7 @@ REFRESH_SECONDS = 300
 PROBE_TIMEOUT = 12
 # Reserve the bundled shortcut text, separators, and space for Herdr tab controls.
 TAB_BAR_RESERVED_COLUMNS = 125
+HERDR_MAX_STATUS_CHARS = 80
 PROVIDERS = {"codex": ("CDX", "Codex"), "claude": ("CC", "Claude Code")}
 
 
@@ -284,9 +285,10 @@ def local_reset(resets_at):
 
 
 def bar_window(window, now):
+    label = window.label if len(window.label) <= 32 else window.label[:31].rstrip() + "…"
     if window.resets_at and window.resets_at <= now:
-        return f"{window.label} reset due"
-    used = f"{window.label} {usage_percent(window.used)}"
+        return f"{label} reset due"
+    used = f"{label} {usage_percent(window.used)}"
     if window.resets_at is None:
         return used
     reset = local_reset(window.resets_at)
@@ -316,7 +318,8 @@ def bar_line(readings, now, selected_provider=None):
 def status_entry(readings, now, provider, columns):
     if columns < TAB_BAR_RESERVED_COLUMNS + len(bar_line(readings, now)):
         return ""
-    return bar_line(readings, now, provider)
+    entry = bar_line(readings, now, provider)
+    return entry if len(entry) <= HERDR_MAX_STATUS_CHARS else ""
 
 
 def herdr_tab_columns():

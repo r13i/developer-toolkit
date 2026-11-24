@@ -64,6 +64,14 @@ class UsageWidgetTests(unittest.TestCase):
                 self.assertLessEqual(len(line), 80)
                 self.assertRegex(line, rf"{last_label} \d+% @ \w+ \d{{2}}:\d{{2}}$")
 
+    def test_long_scoped_limit_name_leaves_room_for_the_reset_time(self):
+        now = datetime.now().replace(hour=12, minute=0).timestamp()
+        window = widget.Window("Long scoped limit " * 4, 75, now + 3600)
+        readings = {"codex": widget.Reading((window,), now)}
+        line = widget.status_entry(readings, now, "codex", 250)
+        self.assertLessEqual(len(line), 80)
+        self.assertRegex(line, r"75% @ \d{2}:\d{2}$")
+
     def test_narrow_layout_drops_usage_to_keep_the_shortcut_strip(self):
         now = timestamp("2026-11-25T00:00:00+00:00")
         weekly = widget.Window("7d", 50, now + 86400)
