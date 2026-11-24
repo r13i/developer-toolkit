@@ -62,7 +62,7 @@ class UsageWidgetTests(unittest.TestCase):
             widget.Window("Research model 5h", 65, now + 300),
         ), now)}
         tokens = widget.sidebar_tokens(readings, now)
-        self.assertEqual(tokens["usage_codex_5h"], "Codex Research m… 5h")
+        self.assertEqual(tokens["usage_codex_5h"], "Research model 5h")
         self.assertEqual(tokens["usage_codex_7d"], "Codex 65% ███░░")
 
     def test_sidebar_selects_an_active_scope_and_labels_its_duration(self):
@@ -72,8 +72,15 @@ class UsageWidgetTests(unittest.TestCase):
             widget.Window("Research model 7d", 35, now + 300),
         ), now)}
         tokens = widget.sidebar_tokens(readings, now)
-        self.assertEqual(tokens["usage_codex_5h"], "Codex Research m… 7d")
+        self.assertEqual(tokens["usage_codex_5h"], "Research model 7d")
         self.assertEqual(tokens["usage_codex_7d"], "Codex 35% ██░░░")
+
+    def test_scoped_titles_distinguish_models_that_share_a_prefix(self):
+        codex = widget.sidebar_scope_title("GPT-5.3-Codex 5h")
+        spark = widget.sidebar_scope_title("GPT-5.3-Codex-Spark 5h")
+        self.assertEqual(codex, "GPT-5.3-Codex 5h")
+        self.assertTrue(spark.endswith("Spark 5h"))
+        self.assertNotEqual(codex, spark)
 
     def test_sidebar_labels_previous_readings_without_showing_old_bars(self):
         now = 1795500000

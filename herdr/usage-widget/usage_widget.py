@@ -303,22 +303,30 @@ def progress_bar(used, width):
     return "█" * filled + "░" * (width - filled)
 
 
-def sidebar_scope_title(name, label):
-    def columns(text):
-        return sum(2 if unicodedata.east_asian_width(char) in ("W", "F") else 1 for char in text)
+def sidebar_scope_title(label):
+    def glyph_columns(char):
+        return 2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
 
-    title = f"{name} {label}"
-    if columns(title) <= 20:
-        return title
+    def clip(text, budget):
+        kept = []
+        for char in text:
+            budget -= glyph_columns(char)
+            if budget < 0:
+                break
+            kept.append(char)
+        return "".join(kept)
+
+    if sum(map(glyph_columns, label)) <= 20:
+        return label
 
     scope, _, duration = label.rpartition(" ")
-    has_duration = scope and duration.endswith(("m", "h", "d")) and duration[:-1].isdigit()
+    has_duration = scope and duration.endswith(("m", "h", "d")) and duration[:-1].isdigit() and len(duration) < 7
     suffix = f" {duration}" if has_duration else ""
     scope = scope if has_duration else label
-    budget = 20 - columns(f"{name} …{suffix}")
-    while scope and columns(scope) > budget:
-        scope = scope[:-1]
-    return f"{name} {scope.rstrip()}…{suffix}"
+    budget = 19 - len(suffix)
+    left = clip(scope, budget // 2).rstrip()
+    right = clip(scope[::-1], budget - budget // 2)[::-1].lstrip()
+    return f"{left}…{right}{suffix}"
 
 
 def sidebar_tokens(readings, now):
@@ -339,7 +347,7 @@ def sidebar_tokens(readings, now):
                 window.resets_at if window.resets_at is not None else math.inf,
                 window.label.casefold(),
             ))
-            tokens[slots[0][1]] = sidebar_scope_title(name, scoped.label)
+            tokens[slots[0][1]] = sidebar_scope_title(scoped.label)
             selected = [(fallback_token, name, scoped)]
 
         for token, label, window in selected:
