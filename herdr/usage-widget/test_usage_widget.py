@@ -53,6 +53,25 @@ class UsageWidgetTests(unittest.TestCase):
         self.assertIn("7d 90% @ Sun 16:00", line)
         self.assertIn("CC unavailable", line)
 
+    def test_each_herdr_status_entry_keeps_its_full_reset_times(self):
+        now = timestamp("2026-11-25T00:00:00+00:00")
+        codex = widget.Reading((widget.Window("5h", 44, now + 3600), widget.Window("7d", 65, now + 86400)), now)
+        claude = widget.Reading((*codex.windows, widget.Window("Fable", 32, now + 86400)), now)
+        readings = {"codex": codex, "claude": claude}
+        for provider, last_label in (("codex", "7d"), ("claude", "Fable")):
+            with self.subTest(provider=provider):
+                line = widget.bar_line(readings, now, provider)
+                self.assertLessEqual(len(line), 80)
+                self.assertRegex(line, rf"{last_label} \d+% @ \w+ \d{{2}}:\d{{2}}$")
+
+    def test_narrow_layout_drops_usage_to_keep_the_shortcut_strip(self):
+        now = timestamp("2026-11-25T00:00:00+00:00")
+        weekly = widget.Window("7d", 50, now + 86400)
+        fable = widget.Window("Fable", 65, now + 86400)
+        readings = {"codex": widget.Reading((weekly,), now), "claude": widget.Reading((weekly, fable), now)}
+        self.assertEqual(widget.status_entry(readings, now, "claude", 160), "")
+        self.assertIn("Fable 65%", widget.status_entry(readings, now, "claude", 219))
+
     def test_local_reset_uses_nearest_minute(self):
         before = timestamp("2026-11-25T00:59:59.701567+00:00")
         after = timestamp("2026-11-25T01:00:00.301567+00:00")
@@ -84,6 +103,18 @@ class UsageWidgetTests(unittest.TestCase):
         line = widget.bar_line({"claude": reading}, now)
         self.assertIn("5h reset due", line)
         self.assertNotIn("100%", line)
+
+    def test_a_slow_probe_does_not_skip_the_next_five_minute_refresh(self):
+        now = int(time.time()) - 10
+        result = [(widget.Window("7d", 44, None),), None]
+        with tempfile.TemporaryDirectory() as root:
+            cache = Path(root) / "usage.json"
+            with patch.object(widget, "fetch", return_value=result) as fetch:
+                with patch.object(widget.time, "time", side_effect=[now, now + 10, now + 300, now + 310]):
+                    widget.refresh_cache(cache)
+                    next_reading = widget.refresh_cache(cache)
+        self.assertEqual(fetch.call_count, 2)
+        self.assertEqual(next_reading["codex"].checked_at, now + 310)
 
     def test_private_cache_round_trip(self):
         with tempfile.TemporaryDirectory() as root:

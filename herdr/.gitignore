@@ -1,6 +1,7 @@
 # Track the Herdr profile and plugin source.
 *
 !.gitignore
+!.env.example
 !README.md
 !config.toml
 !AGENTS.md

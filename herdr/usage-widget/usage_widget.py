@@ -18,6 +18,8 @@ from pathlib import Path
 
 REFRESH_SECONDS = 300
 PROBE_TIMEOUT = 12
+# Reserve the bundled shortcut text, separators, and space for Herdr tab controls.
+TAB_BAR_RESERVED_COLUMNS = 125
 PROVIDERS = {"codex": ("CDX", "Codex"), "claude": ("CC", "Claude Code")}
 
 
@@ -237,11 +239,13 @@ def read_cache(path):
     return readings
 
 
-def write_cache(path, readings):
+def write_cache(path, readings, attempted_at=None):
     fd, temp = tempfile.mkstemp(dir=path.parent)
     try:
         with os.fdopen(fd, "w") as output:
             json.dump({provider: asdict(reading) for provider, reading in readings.items()}, output)
+        if attempted_at is not None:
+            os.utime(temp, (attempted_at, attempted_at))
         os.replace(temp, path)
     finally:
         Path(temp).unlink(missing_ok=True)
@@ -251,10 +255,8 @@ def refresh_cache(path):
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     fd = os.open(path.with_suffix(".lock"), os.O_RDWR | os.O_CREAT, 0o600)
     with os.fdopen(fd, "r+") as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            return read_cache(path)
+        # Both Herdr status entries share one refresh and render the same snapshot.
+        fcntl.flock(lock, fcntl.LOCK_EX)
         now = time.time()
         try:
             age = now - path.stat().st_mtime
@@ -264,7 +266,8 @@ def refresh_cache(path):
         if 0 <= age < REFRESH_SECONDS - 5:
             return previous
         readings = update_readings(previous, asyncio.run(fetch()), time.time())
-        write_cache(path, readings)
+        # Schedule from the start of the last probe, even when a provider was slow.
+        write_cache(path, readings, attempted_at=now)
         return readings
 
 
@@ -291,9 +294,11 @@ def bar_window(window, now):
     return f"{used} @ {reset:{fmt}}"
 
 
-def bar_line(readings, now):
+def bar_line(readings, now, selected_provider=None):
     entries = []
-    for provider, (short, _) in PROVIDERS.items():
+    providers = (selected_provider,) if selected_provider else tuple(PROVIDERS)
+    for provider in providers:
+        short, _ = PROVIDERS[provider]
         reading = readings.get(provider)
         if reading is None or not reading.windows:
             entries.append(f"{short} unavailable")
@@ -304,7 +309,28 @@ def bar_line(readings, now):
         windows = " ".join(bar_window(row, now) for row in (standard or reading.windows[:1]))
         suffix = " (stale)" if is_stale(reading, now) else ""
         entries.append(f"{short} {windows}{suffix}")
-    return "Used · " + " · ".join(entries)
+    prefix = "Used · " if selected_provider != "claude" else ""
+    return prefix + " · ".join(entries)
+
+
+def status_entry(readings, now, provider, columns):
+    if columns < TAB_BAR_RESERVED_COLUMNS + len(bar_line(readings, now)):
+        return ""
+    return bar_line(readings, now, provider)
+
+
+def herdr_tab_columns():
+    binary = executable("herdr")
+    pane = os.environ.get("HERDR_ACTIVE_PANE_ID")
+    if not binary or not pane:
+        return 0
+    try:
+        raw = subprocess.check_output([binary, "pane", "layout", "--pane", pane],
+                                      stderr=subprocess.DEVNULL, timeout=2)
+        width = json.loads(raw)["result"]["layout"]["area"]["width"]
+        return width if type(width) is int else 0
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError):
+        return 0
 
 
 def countdown(seconds):
@@ -413,6 +439,8 @@ def popup(screen, path, inventory, integrations):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("view", choices=("bar", "details", "popup"))
+    parser.add_argument("--provider", choices=tuple(PROVIDERS), help="render a single Herdr bar entry")
+    parser.add_argument("--fit", action="store_true", help="leave room for the Herdr shortcuts")
     args = parser.parse_args()
     path = cache_path()
     if args.view == "bar":
@@ -420,7 +448,10 @@ def main():
             readings = refresh_cache(path)
         except OSError:
             readings = read_cache(path)
-        print(bar_line(readings, time.time()))
+        now = time.time()
+        line = (status_entry(readings, now, args.provider, herdr_tab_columns())
+                if args.fit else bar_line(readings, now, args.provider))
+        print(line)
         return
 
     inventory, integrations = herdr_inventory()

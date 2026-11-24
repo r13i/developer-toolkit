@@ -7,6 +7,7 @@ Saved configuration and workflow preferences for Herdr TUI, validated with versi
 - `config.toml`: the active settings snapshot.
 - `AGENTS.md`: workflow preferences for agents maintaining the profile.
 - `usage-widget/` contains the plugin manifest, Python script, and tests.
+- [`.env.example`](.env.example) lists the optional environment settings.
 - `.gitignore` keeps runtime state and credentials outside Git.
 
 ## Shortcuts
@@ -37,7 +38,7 @@ A compact cheat sheet stays visible along the bottom of the terminal area. It st
 
 The strip includes workspace cycling, workspace and pane actions, splitting below, worktrees, zoom, search, and help. Press the prefix followed by `?` for the full active keymap.
 
-Herdr renders the shortcuts and usage in the tab row's status area. The row stays visible with one tab. On narrow terminals, open usage with the prefix followed by `u`.
+Herdr renders the shortcuts and usage in the tab row's status area. The row stays visible with one tab. If space is tight, the strip keeps the shortcuts and moves usage to the popup. Open it with the prefix followed by `u`.
 
 The Agents section in the left sidebar cannot be replaced with arbitrary text through the TUI's configuration. This profile uses the supported bottom status strip instead.
 
