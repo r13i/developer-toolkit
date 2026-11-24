@@ -38,7 +38,7 @@ A compact cheat sheet stays visible along the bottom of the terminal area. It st
 
 The strip includes workspace cycling, workspace and pane actions, splitting below, worktrees, zoom, search, and help. Press the prefix followed by `?` for the full active keymap.
 
-Herdr renders the shortcuts and usage in the tab row's status area. The row stays visible with one tab. If space is tight, the strip keeps the shortcuts and moves usage to the popup. Open it with the prefix followed by `u`.
+Herdr renders the shortcuts and usage in the tab row's status area. The row stays visible with one tab. If space is tight, view any usage that does not fit beside the shortcuts in the popup. Open it with the prefix followed by `u`.
 
 The Agents section in the left sidebar cannot be replaced with arbitrary text through the TUI's configuration. This profile uses the supported bottom status strip instead.
 

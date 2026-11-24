@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 import textwrap
 import time
+import unicodedata
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +22,7 @@ PROBE_TIMEOUT = 12
 # Reserve the bundled shortcut text, separators, and space for Herdr tab controls.
 TAB_BAR_RESERVED_COLUMNS = 125
 HERDR_MAX_STATUS_CHARS = 80
+USED_PREFIX = "Used · "
 PROVIDERS = {"codex": ("CDX", "Codex"), "claude": ("CC", "Claude Code")}
 
 
@@ -298,16 +300,19 @@ def bar_window(window, now, limit=None):
     if limit is not None and len(label) + len(detail) + 1 > limit:
         budget = limit - len(detail) - 1
         scope, _, duration = label.rpartition(" ")
-        if scope and (duration == "limit" or (duration.endswith(("m", "h", "d")) and duration[:-1].isdigit())):
+        has_duration = scope and (
+            duration == "limit" or (duration.endswith(("m", "h", "d")) and duration[:-1].isdigit())
+        )
+        if has_duration and budget > len(duration) + 2:
             label = scope[:budget - len(duration) - 2].rstrip() + f"… {duration}"
-        else:
+        elif not has_duration and budget > 1:
             label = label[:budget - 1].rstrip() + "…"
+        # Leave an entry that cannot fit intact. The status strip can skip it.
     return f"{label} {detail}"
 
 
-def bar_line(readings, now, selected_provider=None):
+def bar_line(readings, now, selected_provider=None, max_chars=HERDR_MAX_STATUS_CHARS):
     entries = []
-    used_prefix = "Used · "
     providers = (selected_provider,) if selected_provider else tuple(PROVIDERS)
     for provider in providers:
         short, _ = PROVIDERS[provider]
@@ -322,19 +327,36 @@ def bar_line(readings, now, selected_provider=None):
         if standard:
             windows = " ".join(bar_window(row, now) for row in standard)
         else:
-            prefix_size = len(used_prefix) if provider == "codex" else 0
-            budget = HERDR_MAX_STATUS_CHARS - prefix_size - len(short) - len(suffix) - 1
+            prefix_size = len(USED_PREFIX) if provider == "codex" else 0
+            budget = max_chars - prefix_size - len(short) - len(suffix) - 1
             windows = bar_window(reading.windows[0], now, budget)
         entries.append(f"{short} {windows}{suffix}")
-    prefix = used_prefix if selected_provider != "claude" else ""
+    prefix = USED_PREFIX if selected_provider != "claude" else ""
     return prefix + " · ".join(entries)
 
 
+def entry_width(entry):
+    # Wide glyphs can take two terminal columns even when Herdr counts one character.
+    return sum(2 if unicodedata.east_asian_width(char) in ("W", "F") else 1 for char in entry)
+
+
 def status_entry(readings, now, provider, columns):
-    if columns < TAB_BAR_RESERVED_COLUMNS + len(bar_line(readings, now)):
-        return ""
-    entry = bar_line(readings, now, provider)
-    return entry if len(entry) <= HERDR_MAX_STATUS_CHARS else ""
+    remaining = columns - TAB_BAR_RESERVED_COLUMNS
+    entries = {name: bar_line(readings, now, name) for name in PROVIDERS}
+    visible = {}
+    # Fit shorter entries first so a long scoped quota cannot hide another provider.
+    for name in sorted(entries, key=lambda name: entry_width(entries[name])):
+        budget = min(remaining, HERDR_MAX_STATUS_CHARS)
+        entry = entries[name]
+        if entry_width(entry) > budget:
+            entry = bar_line(readings, now, name, max_chars=budget)
+        if entry_width(entry) <= budget:
+            visible[name] = entry
+            remaining -= entry_width(entry)
+    if provider == "claude" and provider in visible and "codex" not in visible:
+        if remaining >= len(USED_PREFIX) and len(visible[provider]) + len(USED_PREFIX) <= HERDR_MAX_STATUS_CHARS:
+            return USED_PREFIX + visible[provider]
+    return visible.get(provider, "")
 
 
 def herdr_tab_columns():
@@ -460,6 +482,8 @@ def main():
     parser.add_argument("--provider", choices=tuple(PROVIDERS), help="render a single Herdr bar entry")
     parser.add_argument("--fit", action="store_true", help="leave room for the Herdr shortcuts")
     args = parser.parse_args()
+    if args.fit and not args.provider:
+        parser.error("--fit requires --provider")
     path = cache_path()
     if args.view == "bar":
         try:

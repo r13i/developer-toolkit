@@ -87,6 +87,18 @@ class UsageWidgetTests(unittest.TestCase):
         self.assertEqual(widget.status_entry(readings, now, "claude", 160), "")
         self.assertIn("Fable 65%", widget.status_entry(readings, now, "claude", 219))
 
+    def test_fitting_claude_entry_survives_a_long_codex_scope(self):
+        now = datetime.now().replace(hour=12, minute=0, second=0).timestamp()
+        readings = {
+            "codex": widget.Reading((widget.Window("Enterprise Research Model Allocation 5h", 75, now + 3600),), now),
+            "claude": widget.Reading((widget.Window("5h", 50, now + 3600),), now),
+        }
+        codex = widget.status_entry(readings, now, "codex", 200)
+        claude = widget.status_entry(readings, now, "claude", 200)
+        self.assertIn("CC 5h 50% @ 13:00", claude)
+        self.assertIn("5h 75% @ 13:00", codex)
+        self.assertLessEqual(len(codex) + len(claude), 75)
+
     def test_local_reset_uses_nearest_minute(self):
         before = timestamp("2026-11-25T00:59:59.701567+00:00")
         after = timestamp("2026-11-25T01:00:00.301567+00:00")
