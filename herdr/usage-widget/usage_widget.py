@@ -286,7 +286,7 @@ def local_reset(resets_at):
     return datetime.fromtimestamp(math.floor((resets_at + 30) / 60) * 60).astimezone()
 
 
-def bar_window(window, now, limit=None):
+def bar_window(window, now, max_chars=math.inf, max_columns=math.inf):
     if window.resets_at and window.resets_at <= now:
         detail = "reset due"
     else:
@@ -297,21 +297,35 @@ def bar_window(window, now, limit=None):
             detail += f" @ {reset:{fmt}}"
 
     label = window.label
-    if limit is not None and len(label) + len(detail) + 1 > limit:
-        budget = limit - len(detail) - 1
-        scope, _, duration = label.rpartition(" ")
-        has_duration = scope and (
-            duration == "limit" or (duration.endswith(("m", "h", "d")) and duration[:-1].isdigit())
-        )
-        if has_duration and budget > len(duration) + 2:
-            label = scope[:budget - len(duration) - 2].rstrip() + f"… {duration}"
-        elif not has_duration and budget > 1:
-            label = label[:budget - 1].rstrip() + "…"
-        # Leave an entry that cannot fit intact. The status strip can skip it.
-    return f"{label} {detail}"
+    full = f"{label} {detail}"
+    if len(full) <= max_chars and entry_width(full) <= max_columns:
+        return full
+
+    scope, _, duration = label.rpartition(" ")
+    has_duration = scope and (
+        duration == "limit" or (duration.endswith(("m", "h", "d")) and duration[:-1].isdigit())
+    )
+    head = scope if has_duration else label
+    tail = f"… {duration} {detail}" if has_duration else f"… {detail}"
+    chars_left = max_chars - len(tail)
+    columns_left = max_columns - entry_width(tail)
+    shortened = []
+    for char in head:
+        width = entry_width(char)
+        if chars_left < 1 or columns_left < width:
+            break
+        shortened.append(char)
+        chars_left -= 1
+        columns_left -= width
+    return "".join(shortened).rstrip() + tail if shortened else full
 
 
-def bar_line(readings, now, selected_provider=None, max_chars=HERDR_MAX_STATUS_CHARS):
+def standard_windows(provider, windows):
+    labels = ("5h", "7d", "fable") if provider == "claude" else ("5h", "7d")
+    return [row for row in windows if row.label.casefold() in labels]
+
+
+def bar_line(readings, now, selected_provider=None, max_columns=math.inf):
     entries = []
     providers = (selected_provider,) if selected_provider else tuple(PROVIDERS)
     for provider in providers:
@@ -320,16 +334,17 @@ def bar_line(readings, now, selected_provider=None, max_chars=HERDR_MAX_STATUS_C
         if reading is None or not reading.windows:
             entries.append(f"{short} unavailable")
             continue
-        standard = [row for row in reading.windows if row.label in ("5h", "7d")]
-        if provider == "claude":
-            standard += [row for row in reading.windows if row.label.casefold() == "fable"]
+        standard = standard_windows(provider, reading.windows)
         suffix = " (stale)" if is_stale(reading, now) else ""
         if standard:
             windows = " ".join(bar_window(row, now) for row in standard)
         else:
-            prefix_size = len(USED_PREFIX) if provider == "codex" else 0
-            budget = max_chars - prefix_size - len(short) - len(suffix) - 1
-            windows = bar_window(reading.windows[0], now, budget)
+            padding = (USED_PREFIX if provider == "codex" else "") + f"{short} {suffix}"
+            windows = bar_window(
+                reading.windows[0], now,
+                max_chars=HERDR_MAX_STATUS_CHARS - len(padding),
+                max_columns=max_columns - entry_width(padding),
+            )
         entries.append(f"{short} {windows}{suffix}")
     prefix = USED_PREFIX if selected_provider != "claude" else ""
     return prefix + " · ".join(entries)
@@ -344,15 +359,21 @@ def status_entry(readings, now, provider, columns):
     remaining = columns - TAB_BAR_RESERVED_COLUMNS
     entries = {name: bar_line(readings, now, name) for name in PROVIDERS}
     visible = {}
-    # Fit shorter entries first so a long scoped quota cannot hide another provider.
-    for name in sorted(entries, key=lambda name: entry_width(entries[name])):
-        budget = min(remaining, HERDR_MAX_STATUS_CHARS)
+    def priority(name):
+        reading = readings.get(name)
+        if not reading or not reading.windows:
+            return 2
+        return 0 if standard_windows(name, reading.windows) else 1
+
+    # Reserve the fixed windows first. Scoped names can shorten to fit what remains.
+    for name in sorted(entries, key=priority):
         entry = entries[name]
-        if entry_width(entry) > budget:
-            entry = bar_line(readings, now, name, max_chars=budget)
-        if entry_width(entry) <= budget:
+        if entry_width(entry) > remaining:
+            entry = bar_line(readings, now, name, max_columns=remaining)
+        width = entry_width(entry)
+        if width <= remaining and len(entry) <= HERDR_MAX_STATUS_CHARS:
             visible[name] = entry
-            remaining -= entry_width(entry)
+            remaining -= width
     if provider == "claude" and provider in visible and "codex" not in visible:
         if remaining >= len(USED_PREFIX) and len(visible[provider]) + len(USED_PREFIX) <= HERDR_MAX_STATUS_CHARS:
             return USED_PREFIX + visible[provider]

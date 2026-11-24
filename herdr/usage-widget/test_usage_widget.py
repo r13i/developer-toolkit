@@ -99,6 +99,33 @@ class UsageWidgetTests(unittest.TestCase):
         self.assertIn("5h 75% @ 13:00", codex)
         self.assertLessEqual(len(codex) + len(claude), 75)
 
+    def test_live_usage_fits_before_unavailable_placeholders(self):
+        now = datetime.now().replace(hour=12, minute=0, second=0).timestamp()
+        windows = (widget.Window("5h", 50, now + 3600), widget.Window("7d", 60, now + 3600))
+        readings = {"claude": widget.Reading(windows, now)}
+        self.assertIn("CC 5h 50% @ 13:00", widget.status_entry(readings, now, "claude", 165))
+        self.assertEqual(widget.status_entry(readings, now, "codex", 165), "")
+
+    def test_fable_stays_visible_when_codex_scope_can_be_shortened(self):
+        now = datetime.now().replace(hour=12, minute=0, second=0).timestamp()
+        readings = {
+            "codex": widget.Reading((widget.Window("Enterprise Allocation 5h", 75, now + 3600),), now),
+            "claude": widget.Reading(tuple(widget.Window(label, 50, now + 3600)
+                                           for label in ("5h", "7d", "Fable")), now),
+        }
+        codex = widget.status_entry(readings, now, "codex", 205)
+        claude = widget.status_entry(readings, now, "claude", 205)
+        self.assertIn("5h 75% @ 13:00", codex)
+        self.assertIn("Fable 50% @ 13:00", claude)
+        self.assertLessEqual(len(codex) + len(claude), 80)
+
+    def test_scoped_label_compacts_wide_glyphs_by_terminal_columns(self):
+        now = datetime.now().replace(hour=12, minute=0, second=0).timestamp()
+        reading = widget.Reading((widget.Window("研究開発部門特別割当枠 5h", 75, now + 3600),), now)
+        line = widget.status_entry({"codex": reading}, now, "codex", 155)
+        self.assertIn("… 5h 75% @ 13:00", line)
+        self.assertLessEqual(widget.entry_width(line), 30)
+
     def test_local_reset_uses_nearest_minute(self):
         before = timestamp("2026-11-25T00:59:59.701567+00:00")
         after = timestamp("2026-11-25T01:00:00.301567+00:00")
