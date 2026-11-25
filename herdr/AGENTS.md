@@ -8,5 +8,6 @@
 - After the prefix, use W to create a workspace and Shift+W to close it; P to split a pane and Shift+P to close it; minus to split below; N to create a worktree; M or Z to zoom; G to find workspaces and agents.
 - Remove conflicting default bindings whenever adding these shortcuts. Use right-click menus for renaming.
 - Keep Git worktree deletion separate from closing a workspace; closing a workspace must not delete its checkout files.
+- Keep the bottom strip for shortcuts. Show account usage as one labeled progress bar per quota under the active workspace in the expanded sidebar. Put full reset times in the machine's local time zone in the quota popup. Keep Fable's weekly bar distinct from Claude's general weekly bar.
 - Telegram setup is paused. Resume it only when the user asks.
 - Store shared Herdr settings in `r13i/developer-toolkit` under `herdr/`. Prefer an existing repository in the user's `r13i` account; ask the user before creating a new repository.

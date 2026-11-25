@@ -6,7 +6,9 @@ Saved configuration and workflow preferences for Herdr TUI, validated with versi
 
 - `config.toml`: the active settings snapshot.
 - `AGENTS.md`: workflow preferences for agents maintaining the profile.
-- `.gitignore`: restricts this directory to the profile and documentation; runtime state and credentials stay outside Git.
+- `usage-widget/` contains the plugin manifest, Python script, and tests.
+- [`.env.example`](.env.example) lists the optional environment settings.
+- `.gitignore` keeps runtime state and credentials outside Git.
 
 ## Shortcuts
 
@@ -16,11 +18,12 @@ Press **Ctrl+Space**, release the keys, then press an action key. **Ctrl+B** rem
 | --- | --- |
 | Tab / Shift+Tab | Next / previous workspace, with wraparound |
 | w / Shift+w | Create / close a workspace |
+| n | Create a Git worktree |
 | p / Shift+p | Split right / close a pane |
 | - | Split below |
-| n | Create a Git worktree |
 | m or z | Maximize / restore the pane |
 | g | Find workspaces and agents |
+| u | Open account usage |
 | ? | Show the active shortcuts |
 
 Direct **Ctrl+Tab** and **Ctrl+Shift+Tab** remain available to the outer terminal, such as iTerm. Their Herdr equivalents use the prefix followed by Tab or Shift+Tab.
@@ -31,13 +34,19 @@ Closing a workspace leaves its Git checkout on disk. Use the worktree controls s
 
 ## Visible shortcut strip
 
-A compact cheat sheet stays visible along the bottom of the terminal area. It starts with `Ctrl+Space >` to show that each action follows the prefix. Uppercase letters mean Shift: `w/W` creates or closes a workspace, and `p/P` splits or closes a pane.
+A compact cheat sheet stays visible along the bottom of the terminal area. It starts with `Ctrl+Space >` to show that each action follows the prefix. Uppercase letters mean Shift. `w/W` creates or closes a workspace, and `p/P` splits or closes a pane.
 
-The strip includes workspace cycling, workspace and pane actions, splitting below, worktrees, zoom, search, and help. Press the prefix followed by `?` for the full active keymap.
+The strip groups workspace and worktree actions first, pane actions second, and search, usage, and help last. Press the prefix followed by `?` for the full active keymap.
 
-Herdr TUI 0.9.5 renders this text in the tab row's status area. The row stays visible even with one tab so the cheat sheet remains available; tab shortcuts remain disabled. The status area hides if the terminal becomes too narrow to fit the whole strip.
+Herdr renders the shortcuts in the tab row's status area. The row stays visible with one tab.
 
-The Agents section in the left sidebar cannot be replaced with arbitrary text through the TUI's configuration. This profile uses the supported bottom status strip instead.
+## Account usage
+
+The expanded sidebar shows a progress bar and percent used for each main quota beneath the active workspace. Fable has a separate weekly bar when Claude reports it. Press **Ctrl+Space**, then **u**, for larger bars, all reported quota windows, full local reset dates, countdowns, and the installed Herdr plugin list. Use the arrow keys to scroll. Press **q** or **Esc** to close.
+
+The widget refreshes every five minutes through the signed-in CLIs. It shows only the quota windows each account reports. It flags stale readings and waits for new data after a reset. Herdr plugins and other installed integrations without a quota feed show `quota unavailable`.
+
+The widget requires Herdr 0.9.5 or later and Python 3.10 or later on macOS or Linux. It uses Codex's App Server and Claude Code's experimental usage request. The Claude probe runs in safe mode with telemetry, update checks, and error reporting disabled. Both CLIs use their existing sign-ins. The widget stores usage windows, their timestamps, and the last workspace ID it updated for each local Herdr session in `$XDG_STATE_HOME/herdr/usage-widget/`, which defaults to `~/.local/state/herdr/usage-widget/`. It does not read credentials, browser cookies, or transcripts.
 
 ## Apply or restore
 
@@ -46,7 +55,7 @@ Run these commands from the repository root. They back up existing settings befo
 ```sh
 (
 set -eu
-herdr_config_dir="$HOME/.config/herdr"
+herdr_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/herdr"
 herdr_backup_root="$HOME/.local/share/herdr-config-backups"
 mkdir -p "$herdr_config_dir" "$herdr_backup_root"
 herdr_backup_dir="$(mktemp -d "$herdr_backup_root/restore.XXXXXXXX")"
@@ -55,12 +64,21 @@ for herdr_file in config.toml AGENTS.md; do
     cp -p "$herdr_config_dir/$herdr_file" "$herdr_backup_dir/"
   fi
 done
+if [ -d "$herdr_config_dir/usage-widget" ]; then
+  cp -pR "$herdr_config_dir/usage-widget" "$herdr_backup_dir/"
+fi
+HERDR_CONFIG_PATH="$PWD/herdr/config.toml" herdr config check
+install -d -m 700 "$herdr_config_dir/usage-widget"
+install -m 644 herdr/usage-widget/herdr-plugin.toml herdr/usage-widget/usage_widget.py "$herdr_config_dir/usage-widget/"
+herdr plugin link "$herdr_config_dir/usage-widget" --enabled
 cp herdr/config.toml herdr/AGENTS.md "$herdr_config_dir/"
 herdr server reload-config
 )
 ```
 
-The reload command requires a running Herdr server. If Herdr is stopped, start it normally after copying the files. If you use `HERDR_CONFIG_PATH`, apply the configuration to that path instead of the default location.
+Start Herdr before applying the profile so the link and reload commands can reach the server. If you use `HERDR_CONFIG_PATH`, copy `config.toml` to that path. Keep the plugin directory at `${XDG_CONFIG_HOME:-$HOME/.config}/herdr/usage-widget` for the scheduled refresh.
+
+Run the widget checks from the repository root with `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s herdr/usage-widget -v`.
 
 ## Save later changes
 

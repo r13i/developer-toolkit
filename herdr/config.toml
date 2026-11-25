@@ -6,11 +6,24 @@ delivery = "terminal"
 [ui]
 window_title = "{workspace}"
 status_indicators = "symbols"
-# Keep one bottom row visible for the shortcut cheat sheet.
+# Keep the shortcuts visible in single-tab workspaces.
 hide_tab_bar_when_single_tab = false
 tab_bar_position = "bottom"
 tab_bar_right = [
-  { type = "text", text = "Ctrl+Space > Tab/Shift+Tab cycle | w/W space | p/P pane | - below | n worktree | m zoom | g find | ? help; CAPS=Shift" },
+  { type = "text", text = "Ctrl+Space > Tab/S-Tab cycle · w/W space · n tree | p/P pane · - below · m zoom | g find · u usage · ? help" },
+  { type = "command", command = 'exec python3 -I "${XDG_CONFIG_HOME:-$HOME/.config}/herdr/usage-widget/usage_widget.py" refresh', interval_seconds = 15, timeout_seconds = 20 },
+]
+
+[ui.sidebar.spaces]
+rows = [
+  ["state_icon", "workspace"],
+  ["branch", "git_status"],
+  [{ token = "$usage_heading", bold = true }],
+  [{ token = "$usage_codex_5h", fg = "#89b4fa" }],
+  [{ token = "$usage_codex_7d", fg = "#89b4fa" }],
+  [{ token = "$usage_claude_5h", fg = "#fab387" }],
+  [{ token = "$usage_claude_7d", fg = "#fab387" }],
+  [{ token = "$usage_fable", fg = "#cba6f7" }],
 ]
 
 [ui.sound]
@@ -49,3 +62,9 @@ previous_tab = ""
 next_tab = ""
 switch_tab = ""
 close_tab = ""
+
+[[keys.command]]
+key = "prefix+u"
+type = "plugin_action"
+command = "herdr-usage-widget.open"
+description = "open account usage"

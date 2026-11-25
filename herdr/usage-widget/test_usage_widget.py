@@ -1,0 +1,184 @@
+import os
+from pathlib import Path
+import tempfile
+import time
+import unicodedata
+import unittest
+from datetime import datetime
+from unittest.mock import patch
+
+import usage_widget as widget
+
+
+def timestamp(value):
+    return datetime.fromisoformat(value).timestamp()
+
+
+class UsageWidgetTests(unittest.TestCase):
+    def test_codex_weekly_only_is_named_by_duration(self):
+        weekly = {"usedPercent": 60, "windowDurationMins": 10080, "resetsAt": 1795598601}
+        windows = widget.codex_windows({
+            "rateLimits": {"primary": weekly, "secondary": None},
+            "rateLimitsByLimitId": {"codex": {"primary": weekly}},
+        })
+        self.assertEqual([(row.label, row.used) for row in windows], [("7d", 60)])
+
+    def test_claude_fable_has_its_own_weekly_gauge(self):
+        reset = "2026-11-25T00:59:59.701567+00:00"
+        windows = widget.claude_windows({
+            "rate_limits_available": True,
+            "rate_limits": {
+                "five_hour": {"utilization": 42, "resets_at": reset},
+                "seven_day": {"utilization": 65, "resets_at": reset},
+                "model_scoped": [{"display_name": "Fable", "utilization": 32, "resets_at": reset}],
+                "internal": {"utilization": 99, "resets_at": reset},
+            },
+        })
+        self.assertEqual(
+            [(row.label, row.used) for row in windows],
+            [("5h", 42), ("7d", 65), ("Fable", 32)],
+        )
+        self.assertEqual(windows[-1].resets_at, timestamp(reset))
+
+    def test_sidebar_has_a_separate_readable_bar_for_each_quota(self):
+        now = 1795500000
+        readings = {
+            "codex": widget.Reading((widget.Window("7d", 50, now + 300),), now),
+            "claude": widget.Reading((
+                widget.Window("5h", 0, now + 300),
+                widget.Window("7d", 100, now + 300),
+                widget.Window("Fable", 25, now + 300),
+            ), now),
+        }
+        tokens = widget.sidebar_tokens(readings, now)
+        self.assertEqual(tokens["usage_codex_7d"], "Codex 7d 50% ███░░")
+        self.assertEqual(tokens["usage_claude_5h"], "Claude 5h 0% ░░░░░")
+        self.assertEqual(tokens["usage_claude_7d"], "Claude 7d 100% █████")
+        self.assertEqual(tokens["usage_fable"], "Fable 7d 25% █░░░░")
+        self.assertNotIn("usage_codex_5h", tokens)
+
+    def test_sidebar_keeps_a_bar_when_only_scoped_usage_is_reported(self):
+        now = 1795500000
+        readings = {"codex": widget.Reading((
+            widget.Window("Research model 5h", 65, now + 300),
+        ), now)}
+        tokens = widget.sidebar_tokens(readings, now)
+        self.assertEqual(tokens["usage_codex_5h"], "Research model 5h")
+        self.assertEqual(tokens["usage_codex_7d"], "Codex 65% ███░░")
+
+    def test_sidebar_selects_an_active_scope_and_labels_its_duration(self):
+        now = 1795500000
+        readings = {"codex": widget.Reading((
+            widget.Window("Research model 5h", 90, now - 1),
+            widget.Window("Research model 7d", 35, now + 300),
+        ), now)}
+        tokens = widget.sidebar_tokens(readings, now)
+        self.assertEqual(tokens["usage_codex_5h"], "Research model 7d")
+        self.assertEqual(tokens["usage_codex_7d"], "Codex 35% ██░░░")
+
+    def test_scoped_titles_distinguish_models_that_share_a_prefix(self):
+        codex = widget.sidebar_scope_title("GPT-5.3-Codex 5h")
+        spark = widget.sidebar_scope_title("GPT-5.3-Codex-Spark 5h")
+        self.assertEqual(codex, "GPT-5.3-Codex 5h")
+        self.assertTrue(spark.endswith("Spark 5h"))
+        self.assertNotEqual(codex, spark)
+
+    def test_ambiguous_scoped_title_points_to_the_full_quota_details(self):
+        now = 1795500000
+        readings = {"codex": widget.Reading((
+            widget.Window("Model-01A-Shared-Weekly 5h", 80, now + 300),
+            widget.Window("Model-01B-Shared-Weekly 5h", 20, now + 600),
+        ), now)}
+        tokens = widget.sidebar_tokens(readings, now)
+        self.assertEqual(tokens["usage_codex_7d"], "Codex · prefix+u")
+        self.assertNotIn("usage_codex_5h", tokens)
+
+    def test_scope_title_fits_with_a_wide_duration_suffix(self):
+        title = widget.sidebar_scope_title("Long provider model scope １２h")
+        columns = sum(2 if unicodedata.east_asian_width(char) in ("W", "F") else 1 for char in title)
+        self.assertTrue(title.endswith("１２h"))
+        self.assertLessEqual(columns, 20)
+
+    def test_sidebar_labels_previous_readings_without_showing_old_bars(self):
+        now = 1795500000
+        readings = {
+            "codex": widget.Reading((widget.Window("7d", 77, now - 1),), now),
+            "claude": widget.Reading((widget.Window("5h", 88, now + 300),), now, stale=True),
+        }
+        tokens = widget.sidebar_tokens(readings, now)
+        self.assertEqual(tokens["usage_codex_7d"], "Codex 7d reset due")
+        self.assertEqual(tokens["usage_claude_5h"], "Claude 5h stale")
+
+    def test_popup_puts_bar_and_local_reset_on_separate_lines(self):
+        now = timestamp("2026-10-24T14:00:00+00:00")
+        reset = timestamp("2026-10-25T15:00:00+00:00")
+        try:
+            with patch.dict(os.environ, {"TZ": "Europe/Stockholm"}):
+                time.tzset()
+                reading = widget.Reading((widget.Window("Fable", 50, reset),), now)
+                lines = widget.detail_lines({"claude": reading}, [], now)
+        finally:
+            time.tzset()
+        title = lines.index("  Fable weekly")
+        self.assertEqual(lines[title + 1], "  " + "█" * 12 + "░" * 12 + "  50% used")
+        self.assertIn("Sun 25 Oct 16:00 CET", lines[title + 2])
+
+    def test_local_reset_uses_nearest_minute(self):
+        before = timestamp("2026-11-25T00:59:59.701567+00:00")
+        after = timestamp("2026-11-25T01:00:00.301567+00:00")
+        self.assertEqual(widget.local_reset(before), widget.local_reset(after))
+
+    def test_malformed_cache_does_not_prevent_other_provider_rendering(self):
+        with tempfile.TemporaryDirectory() as root:
+            cache = Path(root) / "usage.json"
+            cache.write_text(
+                '{"codex":{"windows":[{"label":"7d","used":null,"resets_at":null}],"checked_at":1795500000,"stale":false},'
+                '"claude":{"windows":[{"label":"5h","used":12,"resets_at":null}],"checked_at":1795500000,"stale":false}}'
+            )
+            tokens = widget.sidebar_tokens(widget.read_cache(cache), 1795500000)
+            self.assertEqual(tokens["usage_codex_7d"], "Codex unavailable")
+            self.assertIn("Claude 5h 12%", tokens["usage_claude_5h"])
+
+    def test_failed_refresh_keeps_other_provider_and_marks_old_data_stale(self):
+        now = timestamp("2026-11-25T00:00:00+00:00")
+        codex = widget.Reading((widget.Window("7d", 20, None),), now - 60)
+        claude = widget.Window("Fable", 30, None)
+        readings = widget.update_readings({"codex": codex}, [None, (claude,)], now)
+        tokens = widget.sidebar_tokens(readings, now)
+        self.assertEqual(tokens["usage_codex_7d"], "Codex 7d stale")
+        self.assertIn("Fable 7d 30%", tokens["usage_fable"])
+
+    def test_expired_window_does_not_show_previous_usage_as_current(self):
+        now = timestamp("2026-11-25T00:00:00+00:00")
+        reading = widget.Reading((widget.Window("5h", 100, now - 1),), now - 60)
+        lines = widget.detail_lines({"claude": reading}, [], now)
+        self.assertTrue(any("Reset passed" in line for line in lines))
+        self.assertFalse(any("100%" in line for line in lines))
+
+    def test_a_slow_probe_does_not_skip_the_next_five_minute_refresh(self):
+        now = int(time.time()) - 10
+        result = [(widget.Window("7d", 44, None),), None]
+        with tempfile.TemporaryDirectory() as root:
+            cache = Path(root) / "usage.json"
+            with patch.object(widget, "fetch", return_value=result) as fetch:
+                with patch.object(widget.time, "time", side_effect=[now, now + 10, now + 300, now + 310]):
+                    widget.refresh_cache(cache)
+                    next_reading = widget.refresh_cache(cache)
+        self.assertEqual(fetch.call_count, 2)
+        self.assertEqual(next_reading["codex"].checked_at, now + 310)
+
+    def test_private_cache_round_trip(self):
+        with tempfile.TemporaryDirectory() as root:
+            cache = Path(root) / "usage.json"
+            readings = {"codex": widget.Reading((widget.Window("7d", 0, None),), 1795500000)}
+            widget.write_cache(cache, readings)
+            self.assertEqual(cache.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(widget.read_cache(cache), readings)
+
+    def test_popup_marks_installed_plugins_without_quota(self):
+        rows = widget.detail_lines({}, [("Sample plugin", "enabled")], 1795500000)
+        self.assertIn("  Sample plugin (enabled) · quota unavailable", rows)
+
+
+if __name__ == "__main__":
+    unittest.main()

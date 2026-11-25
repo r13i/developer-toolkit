@@ -1,6 +1,11 @@
-# Track the profile, preferences, and documentation, not runtime files.
+# Track the Herdr profile and plugin source.
 *
 !.gitignore
+!.env.example
 !README.md
 !config.toml
 !AGENTS.md
+!usage-widget/
+!usage-widget/herdr-plugin.toml
+!usage-widget/usage_widget.py
+!usage-widget/test_usage_widget.py
