@@ -18,13 +18,13 @@ Press **Ctrl+Space**, release the keys, then press an action key. **Ctrl+B** rem
 | --- | --- |
 | Tab / Shift+Tab | Next / previous workspace, with wraparound |
 | w / Shift+w | Create / close a workspace |
+| n | Create a Git worktree |
 | p / Shift+p | Split right / close a pane |
 | - | Split below |
-| n | Create a Git worktree |
 | m or z | Maximize / restore the pane |
 | g | Find workspaces and agents |
-| ? | Show the active shortcuts |
 | u | Open account usage |
+| ? | Show the active shortcuts |
 
 Direct **Ctrl+Tab** and **Ctrl+Shift+Tab** remain available to the outer terminal, such as iTerm. Their Herdr equivalents use the prefix followed by Tab or Shift+Tab.
 
@@ -36,7 +36,7 @@ Closing a workspace leaves its Git checkout on disk. Use the worktree controls s
 
 A compact cheat sheet stays visible along the bottom of the terminal area. It starts with `Ctrl+Space >` to show that each action follows the prefix. Uppercase letters mean Shift. `w/W` creates or closes a workspace, and `p/P` splits or closes a pane.
 
-The strip includes workspace cycling, workspace and pane actions, splitting below, worktrees, zoom, search, and help. Press the prefix followed by `?` for the full active keymap.
+The strip groups workspace and worktree actions first, pane actions second, and search, usage, and help last. Press the prefix followed by `?` for the full active keymap.
 
 Herdr renders the shortcuts in the tab row's status area. The row stays visible with one tab.
 
